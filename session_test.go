@@ -91,7 +91,7 @@ func TestAddSession(t *testing.T) {
 	assert.NoError(t, viper.BindEnv("password"))
 	assert.NoError(t, viper.BindEnv("server"))
 
-	serverURL := os.Getenv("SN_SERVER")
+	serverURL := os.Getenv(SN_SERVER)
 	if serverURL == "" {
 		serverURL = SNServerURL
 	}

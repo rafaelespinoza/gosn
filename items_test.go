@@ -3,7 +3,6 @@ package gosn
 import (
 	"fmt"
 	"math/rand"
-	"os"
 	"strings"
 	"testing"
 
@@ -13,11 +12,6 @@ import (
 )
 
 var (
-	sInput = SignInInput{
-		Email:     os.Getenv("SN_EMAIL"),
-		Password:  os.Getenv("SN_PASSWORD"),
-		APIServer: os.Getenv("SN_SERVER"),
-	}
 	testParas = []string{
 		"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut venenatis est sit amet lectus aliquam, ac rutrum nibh vulputate. Etiam vel nulla dapibus, lacinia neque et, porttitor elit. Nulla scelerisque elit sem, ac posuere est gravida dignissim. Fusce laoreet, enim gravida vehicula aliquam, tellus sem iaculis lorem, rutrum congue ex lectus ut quam. Cras sollicitudin turpis magna, et tempor elit dignissim eu. Etiam sed auctor leo. Sed semper consectetur purus, nec vehicula tellus tristique ac. Cras a quam et magna posuere varius vitae posuere sapien. Morbi tincidunt tellus eu metus laoreet, quis pulvinar sapien consectetur. Fusce nec viverra lectus, sit amet ullamcorper elit. Vestibulum vestibulum augue sem, vitae egestas ipsum fringilla sit amet. Nulla eget ante sit amet velit placerat gravida.",
 		"Duis odio tortor, consequat egestas neque dictum, porttitor laoreet felis. Sed sed odio non orci dignissim vulputate. Praesent a scelerisque lectus. Phasellus sit amet vestibulum felis. Integer blandit, nulla eget tempor vestibulum, nisl dolor interdum eros, sed feugiat est augue sit amet eros. Suspendisse maximus tortor sodales dolor sagittis, vitae mattis est cursus. Etiam lobortis nunc non mi posuere, vel elementum massa congue. Aenean ut lectus vitae nisl scelerisque semper.",
@@ -264,10 +258,11 @@ func cleanup(session *Session) {
 }
 
 func TestPutItemsAddSingleComponent(t *testing.T) {
-	sOutput, err := SignIn(sInput)
-	assert.NoError(t, err, "sign-in failed", err)
-
+	sOutput, err := SignIn(_SignInInput)
 	defer cleanup(&sOutput.Session)
+	if ok := assert.NoError(t, err, "sign-in failed", err); !ok {
+		t.Fatal("test setup failed")
+	}
 
 	newComponentContent := ComponentContent{
 		Name:               "Minimal Markdown Editor",
@@ -351,7 +346,6 @@ func TestPutItemsAddSingleComponent(t *testing.T) {
 	}
 
 	assert.True(t, foundCreatedItem, "failed to get created Item by UUID")
-
 }
 
 func TestItemsRemoveDeleted(t *testing.T) {
@@ -540,10 +534,11 @@ func TestTagComparison(t *testing.T) {
 
 func TestPutItemsAddSingleNote(t *testing.T) {
 	//SetDebugLogger(log.Println)
-	sOutput, err := SignIn(sInput)
-	assert.NoError(t, err, "sign-in failed", err)
-
+	sOutput, err := SignIn(_SignInInput)
 	defer cleanup(&sOutput.Session)
+	if ok := assert.NoError(t, err, "sign-in failed", err); !ok {
+		t.Fatal("test setup failed")
+	}
 
 	randPara := testParas[randInt(0, len(testParas))]
 
@@ -621,11 +616,11 @@ func TestPutItemsAddSingleNote(t *testing.T) {
 }
 
 func TestNoteTagging(t *testing.T) {
-	sOutput, err := SignIn(sInput)
-
-	assert.NoError(t, err, "sign-in failed", err)
-
+	sOutput, err := SignIn(_SignInInput)
 	defer cleanup(&sOutput.Session)
+	if ok := assert.NoError(t, err, "sign-in failed", err); !ok {
+		t.Fatal("test setup failed")
+	}
 
 	// create base notes
 	newNotes := genNotes(100, 2)
@@ -1125,11 +1120,12 @@ func TestCreateAndGet200NotesInBatchesOf50(t *testing.T) {
 }
 
 func TestCreateAndGet301Notes(t *testing.T) {
-	numNotes := 301
-	sOutput, err := SignIn(sInput)
-	assert.NoError(t, err, "sign-in failed", err)
-
+	const numNotes = 301
+	sOutput, err := SignIn(_SignInInput)
 	defer cleanup(&sOutput.Session)
+	if ok := assert.NoError(t, err, "sign-in failed", err); !ok {
+		t.Fatal("test setup failed")
+	}
 
 	newNotes := genNotes(numNotes, 10)
 	assert.NoError(t, newNotes.Validate())

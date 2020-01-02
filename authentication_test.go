@@ -4,12 +4,9 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
-
-var testEmailAddr = fmt.Sprintf("testuser-%s@example.com", time.Now().Format("20060102150405"))
 
 // ### server not required for following tests
 func TestGenerateEncryptedPasswordWithValidInput(t *testing.T) {
@@ -38,7 +35,7 @@ func TestGenerateEncryptedPasswordWithInvalidPasswordCostForVersion003(t *testin
 
 // server required for following tests
 func TestSignIn(t *testing.T) {
-	sOutput, err := SignIn(sInput)
+	sOutput, err := SignIn(_SignInInput)
 	assert.NoError(t, err, "sign-in failed", err)
 
 	if sOutput.Session.Token == "" || sOutput.Session.Mk == "" || sOutput.Session.Ak == "" {
@@ -48,19 +45,19 @@ func TestSignIn(t *testing.T) {
 }
 
 func TestRegistrationAndSignInWithNewCredentials(t *testing.T) {
-	emailAddr := testEmailAddr
-	password := "secret"
+	const password = "secret"
+
 	rInput := RegisterInput{
-		Email:     emailAddr,
+		APIServer: os.Getenv(SN_SERVER),
+		Email:     _Conf.GoodEmail,
 		Password:  password,
-		APIServer: os.Getenv("SN_SERVER"),
 	}
 	_, err := rInput.Register()
 	assert.NoError(t, err, "registration failed")
 
 	postRegSignInInput := SignInInput{
-		APIServer: os.Getenv("SN_SERVER"),
-		Email:     emailAddr,
+		APIServer: os.Getenv(SN_SERVER),
+		Email:     _Conf.GoodEmail,
 		Password:  password,
 	}
 	_, err = SignIn(postRegSignInInput)
@@ -68,11 +65,10 @@ func TestRegistrationAndSignInWithNewCredentials(t *testing.T) {
 }
 
 func TestRegistrationWithPreRegisteredEmail(t *testing.T) {
-	password := "secret"
 	rInput := RegisterInput{
-		Email:     testEmailAddr,
-		Password:  password,
-		APIServer: os.Getenv("SN_SERVER"),
+		Email:     _Conf.GoodEmail,
+		Password:  "secret",
+		APIServer: os.Getenv(SN_SERVER),
 	}
 	_, err := rInput.Register()
 	assert.Error(t, err, "email is already registered")
@@ -83,7 +79,7 @@ func TestSignInWithInvalidEmail(t *testing.T) {
 	sInput := SignInInput{
 		Email:     "invalid@example.com",
 		Password:  password,
-		APIServer: os.Getenv("SN_SERVER"),
+		APIServer: os.Getenv(SN_SERVER),
 	}
 	_, err := SignIn(sInput)
 	assert.Error(t, err)
@@ -91,11 +87,10 @@ func TestSignInWithInvalidEmail(t *testing.T) {
 }
 
 func TestSignInWithBadPassword(t *testing.T) {
-	password := "invalid"
 	sInput := SignInInput{
 		Email:     "sn@lessknown.co.uk",
-		Password:  password,
-		APIServer: os.Getenv("SN_SERVER"),
+		Password:  "invalid",
+		APIServer: os.Getenv(SN_SERVER),
 	}
 	_, err := SignIn(sInput)
 	assert.Error(t, err)
@@ -103,10 +98,9 @@ func TestSignInWithBadPassword(t *testing.T) {
 }
 
 func TestSignInWithUnresolvableHost(t *testing.T) {
-	password := "invalid"
 	sInput := SignInInput{
 		Email:     "sn@lessknown.co.uk",
-		Password:  password,
+		Password:  "invalid",
 		APIServer: "https://standardnotes.example.com:443",
 	}
 	_, err := SignIn(sInput)
@@ -139,10 +133,9 @@ func TestSignInWithInvalidURL(t *testing.T) {
 //}
 
 func TestSignInWithUnavailableServer(t *testing.T) {
-	password := "invalid"
 	sInput := SignInInput{
 		Email:     "sn@lessknown.co.uk",
-		Password:  password,
+		Password:  "invalid",
 		APIServer: "https://10.10.10.10:6000",
 	}
 	_, err := SignIn(sInput)
