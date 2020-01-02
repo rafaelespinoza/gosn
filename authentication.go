@@ -8,7 +8,6 @@ import (
 	mathrand "math/rand"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -86,7 +85,6 @@ func requestToken(client *http.Client, input signInInput) (signInSuccess signInR
 	readStart := time.Now()
 	signInRespBody, err = ioutil.ReadAll(signInResp.Body)
 	debugPrint(input.debug, fmt.Sprintf("requestToken | response read took %+v", time.Since(readStart)))
-
 
 	if err != nil {
 		return
@@ -427,7 +425,10 @@ func (input RegisterInput) Register() (token string, err error) {
 
 	var req *http.Request
 
-	reqBody := `{"email":"` + input.Email + `","identifier":"` + input.Email + `","password":"` + pw + `","pw_cost":"` + strconv.Itoa(defaultPasswordCost) + `","pw_nonce":"` + pwNonce + `","version":"` + defaultSNVersion + `"}`
+	reqBody := strings.TrimSpace(fmt.Sprintf(
+		`{"email":"%s", "identifier":"%s", "password":"%s", "pw_cost":%d, "pw_nonce":"%s", "version":"%s"}`,
+		input.Email, input.Email, pw, defaultPasswordCost, pwNonce, defaultSNVersion,
+	))
 	reqBodyBytes := []byte(reqBody)
 
 	req, err = http.NewRequest(http.MethodPost, input.APIServer+authRegisterPath, bytes.NewBuffer(reqBodyBytes))
