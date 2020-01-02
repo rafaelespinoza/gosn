@@ -796,261 +796,182 @@ func TestNoteTagging(t *testing.T) {
 	}
 }
 
-func TestSearchNotesByUUID(t *testing.T) {
-	//SetDebugLogger(log.Println)
-	sOutput, err := SignIn(sInput)
-	assert.NoError(t, err, "sign-in failed", err)
-
+func TestSearchNotes(t *testing.T) {
+	sOutput, err := SignIn(_SignInInput)
 	defer cleanup(&sOutput.Session)
+	if ok := assert.NoError(t, err, "sign-in failed", err); !ok {
+		t.Fatal("test setup failed")
+	}
 
-	// create two notes
+	// create notes
 	noteInput := map[string]string{
-		"Cheese Fact": "Cheese is not a vegetable",
 		"Dog Fact":    "Dogs can't look up",
+		"Cheese Fact": "Cheese is not a vegetable",
 		"GNU":         "Is Not Unix",
 	}
-
-	var cnO PutItemsOutput
-	cnO, err = _createNotes(sOutput.Session, noteInput)
-	assert.NoError(t, err, "failed to create notes")
-
-	var dogFactUUID string
-
-	var di DecryptedItems
-
-	di, err = cnO.ResponseBody.SavedItems.Decrypt(sOutput.Session.Mk, sOutput.Session.Ak, true)
-	assert.NoError(t, err)
-
-	var dis Items
-	dis, err = di.Parse()
-	assert.NoError(t, err)
-
-	for _, di := range dis {
-		if di.Content.GetTitle() == "Dog Fact" {
-			dogFactUUID = di.UUID
-		}
-	}
-
-	var foundItems Items
-
-	filterOne := Filter{
-		Type:  "Note",
-		Key:   "UUID",
-		Value: dogFactUUID,
-	}
-
-	var itemFilters ItemFilters
-	itemFilters.Filters = []Filter{filterOne}
-
-	foundItems, err = _getItems(sOutput.Session, itemFilters)
-	if err != nil {
-		t.Error(err.Error())
-	}
-
-	// check correct items returned
-	switch len(foundItems) {
-	case 0:
-		t.Errorf("no notes returned")
-	case 1:
-		if foundItems[0].Content.GetTitle() != "Dog Fact" {
-			t.Errorf("incorrect note returned (title mismatch)")
-		}
-
-		if !strings.Contains(foundItems[0].Content.GetText(), "Dogs can't look up") {
-			t.Errorf("incorrect note returned (text mismatch)")
-		}
-	default:
-		t.Errorf("expected one note but got: %d", len(foundItems))
-	}
-}
-
-func TestSearchNotesByText(t *testing.T) {
-	//SetDebugLogger(log.Println)
-	sOutput, err := SignIn(sInput)
-	assert.NoError(t, err, "sign-in failed", err)
-
-	defer cleanup(&sOutput.Session)
-
-	// create two notes
-	noteInput := map[string]string{
-		"Dog Fact":    "Dogs can't look up",
-		"Cheese Fact": "Cheese is not a vegetable",
-	}
-
 	if _, err = _createNotes(sOutput.Session, noteInput); err != nil {
-		t.Errorf("failed to create notes")
-	}
-	// find one note by text
-	var foundItems Items
-
-	filterOne := Filter{
-		Type:       "Note",
-		Key:        "Text",
-		Comparison: "contains",
-		Value:      "Cheese",
+		t.Fatal("failed to create notes")
 	}
 
-	var itemFilters ItemFilters
-	itemFilters.Filters = []Filter{filterOne}
+	type ExpectedItem struct{ Title, Text string }
 
-	foundItems, err = _getItems(sOutput.Session, itemFilters)
-	if err != nil {
-		t.Error(err.Error())
+	tests := []struct {
+		filter        Filter
+		needUUID      bool
+		expectedItems []ExpectedItem
+	}{
+		// TestSearchNotesByUUID
+		{
+			filter: Filter{
+				Type: "Note",
+				Key:  "UUID",
+				// Value: //
+			},
+			needUUID: true,
+			expectedItems: []ExpectedItem{
+				{Title: "Dog Fact", Text: "Dogs can't look up"},
+			},
+		},
+		// TestSearchNotesByText
+		{
+			filter: Filter{
+				Type:       "Note",
+				Key:        "Text",
+				Comparison: "contains",
+				Value:      "Cheese",
+			},
+			expectedItems: []ExpectedItem{
+				{Title: "Cheese Fact", Text: "Cheese is not a vegetable"},
+			},
+		},
+		// TestSearchNotesByRegexTitleFilter
+		{
+			filter: Filter{
+				Type:       "Note",
+				Key:        "Title",
+				Comparison: "~",
+				Value:      "^Do.*",
+			},
+			expectedItems: []ExpectedItem{
+				{Title: "Dog Fact", Text: "Dogs can't look up"},
+			},
+		},
 	}
-	// check correct items returned
-	switch len(foundItems) {
-	case 0:
-		t.Errorf("no notes returned")
-	case 1:
-		if foundItems[0].Content.GetTitle() != "Cheese Fact" {
-			t.Errorf("incorrect note returned (title mismatch)")
+
+	for i, test := range tests {
+		if test.needUUID {
+			cnO, err := _createNotes(sOutput.Session, noteInput)
+			assert.NoError(t, err, "failed to create notes")
+			di, err := cnO.ResponseBody.SavedItems.Decrypt(
+				sOutput.Session.Mk,
+				sOutput.Session.Ak,
+				true,
+			)
+			assert.NoError(t, err)
+			var dis Items
+			dis, err = di.Parse()
+			assert.NoError(t, err)
+
+			var uuid string
+			for _, di := range dis {
+				if di.Content.GetTitle() == "Dog Fact" {
+					uuid = di.UUID
+				}
+			}
+			test.filter.Value = uuid
 		}
 
-		if !strings.Contains(foundItems[0].Content.GetText(), "Cheese is not a vegetable") {
-			t.Errorf("incorrect note returned (text mismatch)")
+		var itemFilters ItemFilters
+		itemFilters.Filters = []Filter{test.filter}
+
+		actual, err := _getItems(sOutput.Session, itemFilters)
+		if err != nil {
+			t.Error(err.Error())
 		}
-	default:
-		t.Errorf("expected one note but got: %d", len(foundItems))
+		if len(actual) != len(test.expectedItems) {
+			t.Errorf(
+				"test [%d]; wrong number of found items; got %d, expected %d",
+				i, len(actual), len(test.expectedItems),
+			)
+			continue
+		}
+		for i, item := range actual {
+			if item.Content.GetTitle() != test.expectedItems[i].Title {
+				t.Errorf(
+					"incorrect note returned (title mismatch); got %q, expected %q",
+					item.Content.GetTitle(), test.expectedItems[i].Title,
+				)
+			}
+			if !strings.Contains(item.Content.GetText(), test.expectedItems[i].Text) {
+				t.Errorf(
+					"incorrect note returned (text mismatch); got %q, expected %q",
+					item.Content.GetText(), test.expectedItems[i].Text,
+				)
+			}
+		}
 	}
 }
 
-func TestSearchNotesByRegexTitleFilter(t *testing.T) {
-	//SetDebugLogger(log.Println)
-	sOutput, err := SignIn(sInput)
-	assert.NoError(t, err, "sign-in failed", err)
-
+func TestSearchTags(t *testing.T) {
+	sOutput, err := SignIn(_SignInInput)
 	defer cleanup(&sOutput.Session)
-
-	// create two notes
-	noteInput := map[string]string{
-		"Dog Fact":    "Dogs can't look up",
-		"Cheese Fact": "Cheese is not a vegetable",
+	if ok := assert.NoError(t, err, "sign-in failed", err); !ok {
+		t.Fatal("test setup failed")
 	}
-	if _, err = _createNotes(sOutput.Session, noteInput); err != nil {
-		t.Errorf("failed to create notes")
-	}
-	// find one note by text
-	var foundItems Items
-
-	filterOne := Filter{
-		Type:       "Note",
-		Key:        "Title",
-		Comparison: "~",
-		Value:      "^Do.*",
-	}
-
-	var itemFilters ItemFilters
-
-	itemFilters.Filters = []Filter{filterOne}
-
-	foundItems, err = _getItems(sOutput.Session, itemFilters)
-	if err != nil {
-		t.Error(err.Error())
-	}
-	// check correct items returned
-	switch len(foundItems) {
-	case 0:
-		t.Errorf("no notes returned")
-	case 1:
-		if foundItems[0].Content.GetTitle() != "Dog Fact" {
-			t.Errorf("incorrect note returned (title mismatch)")
-		}
-
-		if !strings.Contains(foundItems[0].Content.GetText(), "Dogs can't look up") {
-			t.Errorf("incorrect note returned (text mismatch)")
-		}
-	default:
-		t.Errorf("expected one note but got: %d", len(foundItems))
-	}
-}
-
-func TestSearchTagsByText(t *testing.T) {
-	sOutput, err := SignIn(sInput)
-	cleanup(&sOutput.Session)
-	assert.NoError(t, err, "sign-in failed", err)
-
-	defer cleanup(&sOutput.Session)
 
 	tagInput := []string{"Rod, Jane", "Zippy, Bungle"}
 	if _, err = _createTags(sOutput.Session, tagInput); err != nil {
 		t.Errorf("failed to create tags")
 	}
-	// find one note by text
-	var foundItems Items
 
-	filterOne := Filter{
-		Type:       "Tag",
-		Key:        "Title",
-		Comparison: "contains",
-		Value:      "Bungle",
+	tests := []Filter{
+		// search by text
+		Filter{
+			Type:       "Tag",
+			Key:        "Title",
+			Comparison: "contains",
+			Value:      "Bungle",
+		},
+		// search by regex
+		Filter{
+			Type:       "Tag",
+			Key:        "Title",
+			Comparison: "~",
+			Value:      "pp",
+		},
 	}
+	for i, filter := range tests {
+		// find one note by text
+		var foundItems Items
 
-	var itemFilters ItemFilters
-	itemFilters.Filters = []Filter{filterOne}
+		var itemFilters ItemFilters
+		itemFilters.Filters = []Filter{filter}
 
-	foundItems, err = _getItems(sOutput.Session, itemFilters)
-	if err != nil {
-		t.Error(err.Error())
-	}
-	// check correct items returned
-	switch len(foundItems) {
-	case 0:
-		t.Errorf("no tags returned")
-	case 1:
-		if foundItems[0].Content.GetTitle() != "Zippy, Bungle" {
-			t.Errorf("incorrect tag returned (title mismatch)")
+		foundItems, err = _getItems(sOutput.Session, itemFilters)
+		if err != nil {
+			t.Error(err.Error())
 		}
-	default:
-		t.Errorf("expected one tag but got: %d", len(foundItems))
-	}
-}
 
-func TestSearchTagsByRegex(t *testing.T) {
-	//SetDebugLogger(log.Println)
-	sOutput, err := SignIn(sInput)
-	assert.NoError(t, err, "sign-in failed", err)
-
-	cleanup(&sOutput.Session)
-
-	tagInput := []string{"Rod, Jane", "Zippy, Bungle"}
-	if _, err = _createTags(sOutput.Session, tagInput); err != nil {
-		t.Errorf("failed to create tags")
-	}
-	// find one note by text
-	var foundItems Items
-
-	filterOne := Filter{
-		Type:       "Tag",
-		Key:        "Title",
-		Comparison: "~",
-		Value:      "pp",
-	}
-
-	var itemFilters ItemFilters
-	itemFilters.Filters = []Filter{filterOne}
-
-	foundItems, err = _getItems(sOutput.Session, itemFilters)
-	if err != nil {
-		t.Error(err.Error())
-	}
-	// check correct items returned
-	switch len(foundItems) {
-	case 0:
-		t.Errorf("no tags returned")
-	case 1:
-		if foundItems[0].Content.GetTitle() != "Zippy, Bungle" {
-			t.Errorf("incorrect tag returned (title mismatch)")
+		// check correct items returned
+		switch len(foundItems) {
+		case 0:
+			t.Errorf("test [%d]; no tags returned", i)
+		case 1:
+			if foundItems[0].Content.GetTitle() != "Zippy, Bungle" {
+				t.Errorf("test [%d]; incorrect tag returned (title mismatch)", i)
+			}
+		default:
+			t.Errorf("test [%d]; expected one tag but got: %d", i, len(foundItems))
 		}
-	default:
-		t.Errorf("expected one tag but got: %d", len(foundItems))
 	}
 }
 
 func TestCreateAndGet200NotesInBatchesOf50(t *testing.T) {
-	sOutput, err := SignIn(sInput)
-	assert.NoError(t, err, "sign-in failed", err)
-
+	sOutput, err := SignIn(_SignInInput)
 	defer cleanup(&sOutput.Session)
+	if ok := assert.NoError(t, err, "sign-in failed", err); !ok {
+		t.Fatal("test setup failed")
+	}
 
 	newNotes := genNotes(200, 2)
 	assert.NoError(t, newNotes.Validate())
@@ -1082,7 +1003,9 @@ func TestCreateAndGet200NotesInBatchesOf50(t *testing.T) {
 		var gio GetItemsOutput
 
 		gio, err = GetItems(gii)
-		assert.NoError(t, err)
+		if err != nil {
+			t.Error(err)
+		}
 
 		var di DecryptedItems
 		di, err = gio.Items.Decrypt(sOutput.Session.Mk, sOutput.Session.Ak, true)
@@ -1091,7 +1014,9 @@ func TestCreateAndGet200NotesInBatchesOf50(t *testing.T) {
 		var items Items
 
 		items, err = di.Parse()
-		assert.NoError(t, err)
+		if err != nil {
+			t.Error(err)
+		}
 
 		retrievedNotes = append(retrievedNotes, items...)
 
